@@ -1,19 +1,19 @@
 # backend/app/core/async_queue.py
-import uuid
+from backend.app.core.tasks import run_agent_job
 
-class AsyncJobQueueDraft:
-    """Draft for async job queue. Will later use Celery/RQ."""
-    def __init__(self):
-        self.jobs = {}
-
-    def submit_job(self, payload: dict) -> str:
-        job_id = str(uuid.uuid4())
-        self.jobs[job_id] = {"status": "queued", "result": None}
-        # In real queue: enqueue the job for background processing
-        return job_id
+class AsyncJobQueueCelery:
+    """Async job queue using Celery."""
+    def submit_job(self, job_type: str, payload: dict) -> str:
+        celery_result = run_agent_job.delay(job_type, payload)
+        return celery_result.id
     
     def get_status(self, job_id: str) -> dict:
-        return self.jobs.get(job_id, {"status": "not_found", "result": None})
+        from celery.result import AsyncResult
+        from backend.worker.worker import celery_app
+        result = AsyncResult(job_id, app=celery_app)
+        status = result.status
+        value = result.result if result.successful() else None
+        return {"status": status, "result": value}
     
 # Singleton
-queue = AsyncJobQueueDraft()
+queue = AsyncJobQueueCelery()

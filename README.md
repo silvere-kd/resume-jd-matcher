@@ -57,4 +57,16 @@ Here is how the system works (Flow):
 
 #### How to run:
 
+ 1. Run the fastpi backend:
+ ```
+ uvicorn backend.app.main:get_app --reload
+ ```
 
+  2. Start redis:
+ ```
+ docker run -d -p 6379:6379 redis
+ ```
+  3. Start the Celery worker:
+ ```
+ celery -A backend.worker.worker.celery_app worker --loglevel=info
+ ```

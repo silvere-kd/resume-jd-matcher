@@ -2,3 +2,5 @@ fastapi
 uvicorn
 PyPDF2
 pydantic
+celery[redis]
+redis

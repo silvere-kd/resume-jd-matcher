@@ -31,7 +31,7 @@ async def parse_pdf_endpoint(file: UploadFile = File(...)):
 @api_router.post("/submit-job", response_model=JobSubmitResponse, tags=["Jobs"])
 async def submit_job(request: ResumeJDRequest):
     """Submit a matching/enhancing/cover letter job."""
-    job_id = queue.submit_job(request.dict())
+    job_id = queue.submit_job(request.job_type, request.dict())
     return JobSubmitResponse(job_id=job_id)
 
 @api_router.get("/job-status/{job_id}", response_model=JobStatusResponse, tags=["Jobs"])
