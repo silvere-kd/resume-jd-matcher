@@ -21,9 +21,9 @@ class PDFParser:
             raise ValueError("Unsupported file type for PDFParser.")
         
     def _extract_all(self, reader: PdfReader) -> str:
-        text = ""
+        text = []
         for page in reader.pages:
             page_text = page.extract_text()
             if page_text:
-                text += page_text + "\n"
-        return text.strip()
+                text.append(page_text)
+        return "\n".join(text).strip()

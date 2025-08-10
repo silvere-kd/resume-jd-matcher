@@ -22,11 +22,8 @@ async def parse_pdf_endpoint(file: UploadFile = File(...)):
     """Extract text from uploaded PDF file."""
     content = await file.read()
     parser = PDFParser()
-    try:
-        text = parser.extract_text(content)
-        return PDFUploadResponse(extracted_text=text)
-    except Exception as e:
-        return PDFUploadResponse(extracted_text=f"Error: {str(e)}")
+    text = parser.extract_text(content)
+    return PDFUploadResponse(extracted_text=text)
 
 @api_router.post("/submit-job", response_model=JobSubmitResponse, tags=["Jobs"])
 async def submit_job(request: ResumeJDRequest):

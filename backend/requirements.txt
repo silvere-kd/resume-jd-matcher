@@ -4,3 +4,5 @@ PyPDF2
 pydantic
 celery[redis]
 redis
+python-dotenv
+crewai
