@@ -59,6 +59,7 @@ Here is how the system works (Flow):
 
  1. Run the fastpi backend:
  ```
+ pip install -r backend/requirements.txt
  uvicorn backend.app.main:get_app --reload
  ```
 
@@ -66,7 +67,16 @@ Here is how the system works (Flow):
  ```
  docker run -d -p 6379:6379 redis
  ```
+
   3. Start the Celery worker:
  ```
  celery -A backend.worker.worker.celery_app worker --loglevel=info
+ ```
+
+  4. Start Streamlit:
+ ```
+  cd frontend
+  export BACKEND_URL=http://localhost:8000
+  pip install -r requirements.txt
+  streamlit run streamlit_app.py --server.port 8501
  ```
