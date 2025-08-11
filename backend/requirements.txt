@@ -6,3 +6,4 @@ celery[redis]
 redis
 python-dotenv
 crewai
+reportlab
