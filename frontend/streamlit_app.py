@@ -144,7 +144,7 @@ def _run_job(job_type: str, resume: str, jd: str):
             status_box.write(f"⏳ Elapsed: {int(elapsed)}s — Status: **{status}**")
 
         with st.spinner("Waiting for result..."):
-            result = client.wait_with_progress(job_id, total_wait=120.0, poll_interval=1.5, on_tick=on_tick)
+            result = client.wait_with_progress(job_id, total_wait=600.0, poll_interval=1.5, on_tick=on_tick)
 
         prog.progress(100)
         st.write("")
