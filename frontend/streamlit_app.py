@@ -2,6 +2,7 @@
 
 import os
 import json
+import time
 import streamlit as st
 
 from api_client import BackendClient
@@ -24,12 +25,58 @@ with st.expander("ℹ️ Instructions", expanded=False):
 
 st.markdown("---")
 
+# ---------- Session state ----------
+if "job_history" not in st.session_state:
+    # list of dicts: {"id": str, "type": str, "ts": float}
+    st.session_state.job_history = []
+
+def _push_history(job_id: str, job_type: str):
+    # Avoid duplicates; keep most recent first; cap length to 20
+    st.session_state.job_history = [
+        j for j in st.session_state.job_history if j["id"] != job_id
+    ]
+    st.session_state.job_history.insert(0, {"id": job_id, "type": job_type, "ts": time.time()})
+    st.session_state.job_history = st.session_state.job_history[:20]
+
+def _label_for_job(job_type: str) -> str:
+    jt = (job_type or "").lower()
+    if jt == "match":
+        return "⬇️ Download Match Report (PDF)"
+    if jt == "enhance":
+        return "⬇️ Download Resume Enhancements (PDF)"
+    if jt == "cover_letter":
+        return "⬇️ Download Cover Letter (PDF)"
+    return "⬇️ Download Result (PDF)"
+
+def _html_button(label: str, href: str):
+    return f"""
+    <a href="{href}" target="_blank" style="
+        display: inline-block;
+        text-decoration: none;
+        background: #0f62fe;
+        color: white;
+        padding: 0.5rem 0.75rem;
+        border-radius: 6px;
+        font-weight: 600;
+        border: 1px solid #0f62fe;
+        text-align: center;
+        width: 100%;
+        ">
+        {label}
+    </a>
+    """
+
+def _render_download(job_id: str, job_type: str):
+    st.markdown("### 📥 Download")
+    url_pdf = client.download_url(job_id, "pdf")
+    st.markdown(_html_button(_label_for_job(job_type), url_pdf), unsafe_allow_html=True)
+
+# ---------- Inputs ----------
 col1, col2 = st.columns(2)
 
 def extract_text_from_upload(uploaded_file) -> str:
     if not uploaded_file:
         return ""
-    # Delegate parsing to backend to keep logic consistent
     bytes_data = uploaded_file.read()
     return client.parse_pdf(bytes_data, filename=uploaded_file.name)
 
@@ -73,39 +120,10 @@ with col2:
 
 st.markdown("---")
 
-# Action buttons
+# ---------- Actions ----------
 disabled = not (resume_text and jd_text)
 c1, c2, c3 = st.columns(3)
 output = st.empty()
-
-# Keep last job info in session_state for download links
-if "last_job" not in st.session_state:
-    st.session_state.last_job = {"id": None, "type": None, "result": None}
-
-def _html_button(label: str, href: str):
-    # Simple anchor styled like a button; works across Streamlit versions
-    return f"""
-    <a href="{href}" target="_blank" style="
-        display: inline-block;
-        text-decoration: none;
-        background: #0f62fe;
-        color: white;
-        padding: 0.5rem 0.75rem;
-        border-radius: 6px;
-        font-weight: 600;
-        border: 1px solid #0f62fe;
-        text-align: center;
-        width: 100%;
-        ">
-        {label}
-    </a>
-    """
-
-def _render_downloads(job_id: str):
-    st.markdown("### 📥 Download Result")
-    url_pdf = client.download_url(job_id, "pdf")
-    st.markdown(_html_button("⬇️ Download PDF", url_pdf), unsafe_allow_html=True)
-
 
 def _run_job(job_type: str, resume: str, jd: str):
     with output.container():
@@ -121,28 +139,27 @@ def _run_job(job_type: str, resume: str, jd: str):
         status_box = st.empty()
 
         def on_tick(elapsed, status):
-            pct = min(100, int((elapsed / 60.0) * 100))  # scale progress to 60s
+            pct = min(100, int((elapsed / 60.0) * 100))  # scale to 60s
             prog.progress(pct)
             status_box.write(f"⏳ Elapsed: {int(elapsed)}s — Status: **{status}**")
 
         with st.spinner("Waiting for result..."):
-            result = client.wait_with_progress(job_id, total_wait=180.0, poll_interval=1.5, on_tick=on_tick)
+            result = client.wait_with_progress(job_id, total_wait=120.0, poll_interval=1.5, on_tick=on_tick)
 
         prog.progress(100)
         st.write("")
 
         status = result.get("status")
-        st.session_state.last_job = {"id": job_id, "type": job_type, "result": result}
-
         if status == "SUCCESS":
             st.success("✅ Job finished")
-
-            # Minimal on-screen preview; full artifacts are downloadable
             payload = result.get("result") or {}
             with st.expander("👀 Quick Preview (raw result)", expanded=False):
                 st.json(payload)
 
-            _render_downloads(job_id)
+            # Download + History
+            _render_download(job_id, job_type)
+            _push_history(job_id, job_type)
+
         elif status == "FAILURE":
             st.error(f"❌ Job failed: {result.get('error')}")
         else:
@@ -161,8 +178,22 @@ with c3:
     if st.button("✉️ Generate Cover Letter", disabled=disabled, use_container_width=True):
         _run_job("cover_letter", resume_text, jd_text)
 
-# If a job already completed this session, show its download buttons again at the bottom
-if st.session_state.last_job.get("id"):
+# ---------- History ----------
+if st.session_state.job_history:
     st.markdown("---")
-    st.markdown("### Last job downloads")
-    _render_downloads(st.session_state.last_job["id"])
+    st.subheader("📜 Job History")
+
+    # show the most recent 10
+    for i, item in enumerate(st.session_state.job_history[:10], start=1):
+        job_id = item["id"]
+        job_type = item["type"]
+        ts = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(item["ts"]))
+        url_pdf = client.download_url(job_id, "pdf")
+
+        c_left, c_mid, c_right = st.columns([4, 2, 2])
+        with c_left:
+            st.write(f"**{i}.** `{job_id}`  ·  *{job_type}*  ·  {ts}")
+        with c_mid:
+            st.write("")  # spacer
+        with c_right:
+            st.markdown(_html_button(_label_for_job(job_type), url_pdf), unsafe_allow_html=True)
