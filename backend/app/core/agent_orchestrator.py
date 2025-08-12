@@ -9,9 +9,14 @@ class AgentOrchestrator:
     """Handles agent pipeline for resume-JD matching."""
     def __init__(self):
         # We will build LLM here
-        self.llm = LLM(model=f"{settings.LLM_PROVIDER}/{settings.LLM_MODEL_NAME}", 
-                       base_url=settings.LLM_BASE_URL, 
-                       temperature=settings.LLM_TEMPERATURE)
+        model_id = settings.full_model_id()
+        print(model_id)
+        self.llm = LLM(
+            model=model_id,
+            base_url=settings.LLM_BASE_URL,
+            api_key=settings.LLM_API_KEY,
+            temperature=settings.LLM_TEMPERATURE,
+        )
 
     def _common_validate(self, data: Dict[str, Any]):
         resume = (data or {}).get("resume") or ""

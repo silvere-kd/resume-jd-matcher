@@ -1,73 +1,71 @@
 # backend/app/core/async_queue.py
 
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 from celery.result import AsyncResult
 from backend.app.core.tasks import run_agent_job
 from backend.worker.worker import celery_app
-from backend.app.models.job_models import JobState
-
-def _map_state(celery_state: str) -> JobState:
-    try:
-        return JobState(celery_state)
-    except ValueError:
-        return JobState.UNKNOWN
 
 class AsyncJobQueueCelery:
-    """Async job queue using Celery."""
+    """Async job queue using Celery with queue routing."""
+
+    def _pick_queue(self, job_type: str, payload: Dict[str, Any]) -> str:
+        """
+        Decide which queue to use based on job_type/payload.
+        - LLM-heavy jobs → 'llm'
+        - Future: add 'pdf' for large PDF parse tasks, etc.
+        """
+        jt = (job_type or "").lower()
+        if jt in {"match", "enhance", "cover_letter"}:
+            return "llm"
+        return "default"
+    
     def submit_job(self, job_type: str, payload: dict) -> str:
         # Ensure we don't pass 'job_type' twice (in task arg and inside payload)
         clean_payload = dict(payload or {})
         clean_payload.pop("job_type", None)
-        celery_result = run_agent_job.delay(job_type, clean_payload)
-        return celery_result.id
-    
-    def _get_async_result(self, job_id: str) -> AsyncResult:
-        return AsyncResult(job_id, app=celery_app)
-    
-    def get_status(self, job_id: str) -> dict:
-        ar = self._get_async_result(job_id)
-        state = _map_state(ar.status)
-        info = None
-        if ar.info and isinstance(ar.info, dict):
-            info = ar.info
-        return {"job_id": job_id, "status": state, "info": info}
-    
-    def get_result(self, job_id:str) -> Dict[str, Any]:
-        ar = self._get_async_result(job_id)
-        state = _map_state(ar.status)
 
-        if state == JobState.SUCCESS:
-            return {"job_id": job_id, "status": state, "result": ar.result, "error": None}
-        if state == JobState.FAILURE:
-            err = str(ar.result) if ar.result else "Unknown error"
-            return {"job_id": job_id, "status": state, "result": None, "error": err}
-        
-        # Not ready yet
-        return {"job_id": job_id, "status": state, "result": None, "error": None}
+        queue_name = self._pick_queue(job_type, clean_payload)
+
+        # Route to the selected queue via apply_async; use positional args
+        async_result = run_agent_job.apply_async(
+            args=[job_type, clean_payload],
+            queue=queue_name,
+            routing_key=queue_name,
+        )
+        return async_result.id    
     
-    def wait_for_result(self, job_id:str, timeout: Optional[float] = None) -> Dict[str, Any]:
+    def get_status(self, job_id: str) -> Dict[str, Any]:
+        result = AsyncResult(job_id, app=celery_app)
+        status = result.status
+        value = result.result if result.successful() else None
+        return {"job_id": job_id, "status": status, "info": None}
+    
+    def get_result(self, job_id: str) -> Dict[str, Any]:
+        result = AsyncResult(job_id, app=celery_app)
+        state = result.status
+        if state == "SUCCESS":
+            return {"job_id": job_id, "status": state, "result": result.result, "error": None}
+        if state == "FAILURE":
+            return {"job_id": job_id, "status": state, "result": None, "error": str(result.result)}
+        return {"job_id": job_id, "status": state, "result": None, "error": None}
+        
+    
+    def wait_for_result(self, job_id:str, timeout: float | None = None) -> Dict[str, Any]:
         """
         Block until job finishes or timeout (seconds).
         Returns same shape as get_result().
         """
-        ar = self._get_async_result(job_id)
-
+        ar = AsyncResult(job_id, app=celery_app)
         try:
-            value = ar.get(timeout=timeout, propagate=False) # don't raise exception, capture in .result
-        except Exception as e:  # timeout or backend error
-            # After timeout, reflect current state
-            state = _map_state(ar.status)
-            if str(e):
-                return {"job_id": job_id, "status": state, "result": None, "error": str(e)}
-            return {"job_id": job_id, "status": state, "result": None, "error": "Timeout or retrieval error"}
-        
-        # After get(), state is terminal or we have a value
-        state = _map_state(ar.status)
-        if state == JobState.SUCCESS:
-            return {"job_id": job_id, "status": state, "result": value, "error": None}
-        if state == JobState.FAILURE:
-            err = str(ar.result) if ar.result else "Unknown error"
-            return {"job_id": job_id, "status": state, "result": None, "error": err}
+            val = ar.get(timeout=timeout, propagate=False)
+        except Exception as e:
+            state = ar.status
+            return {"job_id": job_id, "status": state, "result": None, "error": str(e) if str(e) else "Timeout"}
+        state = ar.status
+        if state == "SUCCESS":
+            return {"job_id": job_id, "status": state, "result": val, "error": None}
+        if state == "FAILURE":
+            return {"job_id": job_id, "status": state, "result": None, "error": str(ar.result)}
         return {"job_id": job_id, "status": state, "result": None, "error": None}
 
     

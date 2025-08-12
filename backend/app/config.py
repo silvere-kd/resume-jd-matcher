@@ -13,6 +13,7 @@ class Settings(BaseModel):
     LLM_BASE_URL: str = Field(default=os.getenv("LLM_BASE_URL", "http://ollama:11434"))
     #LLM_BASE_URL: str = Field(default=os.getenv("LLM_BASE_URL", "http://host.docker.internal:11434"))
     LLM_MODEL_NAME: str = Field(default=os.getenv("LLM_MODEL_NAME", "llama3.2"))
+    #LLM_MODEL_NAME: str = Field(default=os.getenv("LLM_MODEL_NAME", "qwen3"))
     LLM_TEMPERATURE: str = Field(default=float(os.getenv("LLM_TEMPERATURE", "0.0")))
 
     # Celery/Redis
