@@ -101,19 +101,10 @@ def _html_button(label: str, href: str):
     </a>
     """
 
-def _render_downloads(job_id: str, job_type: str):
-    st.markdown("### 📥 Downloads")
-    url_md = client.download_url(job_id, "md")
+def _render_downloads(job_id: str):
+    st.markdown("### 📥 Download Result")
     url_pdf = client.download_url(job_id, "pdf")
-    url_json = client.download_url(job_id, "json")
-
-    d1, d2, d3 = st.columns(3)
-    with d1:
-        st.markdown(_html_button("⬇️ Markdown (.md)", url_md), unsafe_allow_html=True)
-    with d2:
-        st.markdown(_html_button("⬇️ PDF (.pdf)", url_pdf), unsafe_allow_html=True)
-    with d3:
-        st.markdown(_html_button("⬇️ JSON (.json)", url_json), unsafe_allow_html=True)
+    st.markdown(_html_button("⬇️ Download PDF", url_pdf), unsafe_allow_html=True)
 
 
 def _run_job(job_type: str, resume: str, jd: str):
@@ -151,7 +142,7 @@ def _run_job(job_type: str, resume: str, jd: str):
             with st.expander("👀 Quick Preview (raw result)", expanded=False):
                 st.json(payload)
 
-            _render_downloads(job_id, job_type)
+            _render_downloads(job_id)
         elif status == "FAILURE":
             st.error(f"❌ Job failed: {result.get('error')}")
         else:
@@ -174,4 +165,4 @@ with c3:
 if st.session_state.last_job.get("id"):
     st.markdown("---")
     st.markdown("### Last job downloads")
-    _render_downloads(st.session_state.last_job["id"], st.session_state.last_job["type"])
+    _render_downloads(st.session_state.last_job["id"])
