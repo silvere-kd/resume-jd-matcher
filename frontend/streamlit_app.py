@@ -1,7 +1,6 @@
 # frontend/streamlit_app.py
 
 import os
-import io
 import json
 import streamlit as st
 
@@ -79,6 +78,44 @@ disabled = not (resume_text and jd_text)
 c1, c2, c3 = st.columns(3)
 output = st.empty()
 
+# Keep last job info in session_state for download links
+if "last_job" not in st.session_state:
+    st.session_state.last_job = {"id": None, "type": None, "result": None}
+
+def _html_button(label: str, href: str):
+    # Simple anchor styled like a button; works across Streamlit versions
+    return f"""
+    <a href="{href}" target="_blank" style="
+        display: inline-block;
+        text-decoration: none;
+        background: #0f62fe;
+        color: white;
+        padding: 0.5rem 0.75rem;
+        border-radius: 6px;
+        font-weight: 600;
+        border: 1px solid #0f62fe;
+        text-align: center;
+        width: 100%;
+        ">
+        {label}
+    </a>
+    """
+
+def _render_downloads(job_id: str, job_type: str):
+    st.markdown("### 📥 Downloads")
+    url_md = client.download_url(job_id, "md")
+    url_pdf = client.download_url(job_id, "pdf")
+    url_json = client.download_url(job_id, "json")
+
+    d1, d2, d3 = st.columns(3)
+    with d1:
+        st.markdown(_html_button("⬇️ Markdown (.md)", url_md), unsafe_allow_html=True)
+    with d2:
+        st.markdown(_html_button("⬇️ PDF (.pdf)", url_pdf), unsafe_allow_html=True)
+    with d3:
+        st.markdown(_html_button("⬇️ JSON (.json)", url_json), unsafe_allow_html=True)
+
+
 def _run_job(job_type: str, resume: str, jd: str):
     with output.container():
         st.info(f"Submitting **{job_type}** job...")
@@ -104,28 +141,17 @@ def _run_job(job_type: str, resume: str, jd: str):
         st.write("")
 
         status = result.get("status")
+        st.session_state.last_job = {"id": job_id, "type": job_type, "result": result}
+
         if status == "SUCCESS":
             st.success("✅ Job finished")
+
+            # Minimal on-screen preview; full artifacts are downloadable
             payload = result.get("result") or {}
-            # Smart display based on job type
-            if job_type == "match":
-                st.subheader("📊 Match Result")
+            with st.expander("👀 Quick Preview (raw result)", expanded=False):
                 st.json(payload)
-                # pretty summary if exists
-                summary = payload.get("summary")
-                if summary:
-                    st.markdown("### Summary")
-                    st.write(summary)
-            elif job_type == "enhance":
-                st.subheader("🛠️ Resume Enhancements")
-                md = payload.get("resume_enhancement_md") or json.dumps(payload, indent=2)
-                st.markdown(md)
-            elif job_type == "cover_letter":
-                st.subheader("✉️ Cover Letter")
-                md = payload.get("cover_letter_md") or json.dumps(payload, indent=2)
-                st.markdown(md)
-            else:
-                st.json(payload)
+
+            _render_downloads(job_id, job_type)
         elif status == "FAILURE":
             st.error(f"❌ Job failed: {result.get('error')}")
         else:
@@ -143,3 +169,9 @@ with c2:
 with c3:
     if st.button("✉️ Generate Cover Letter", disabled=disabled, use_container_width=True):
         _run_job("cover_letter", resume_text, jd_text)
+
+# If a job already completed this session, show its download buttons again at the bottom
+if st.session_state.last_job.get("id"):
+    st.markdown("---")
+    st.markdown("### Last job downloads")
+    _render_downloads(st.session_state.last_job["id"], st.session_state.last_job["type"])

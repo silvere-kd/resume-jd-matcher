@@ -4,6 +4,7 @@ import os
 import time
 from typing import Optional, Dict, Any
 import requests
+from urllib.parse import urlencode
 
 class BackendClient:
     def __init__(self, base_url: Optional[str] = None, timeout: float = 30.0):
@@ -68,3 +69,9 @@ class BackendClient:
             elapsed += poll_interval
         # Fallback: final status fetch
         return self.job_result(job_id)
+    
+    # -------- Download URLs (for link buttons) --------
+    def download_url(self, job_id: str, fmt: str) -> str:
+        """Builds the direct backend URL to download artifacts (md/json/pdf)."""
+        qs = urlencode({"format": fmt})
+        return f"{self.base_url}/job/{job_id}/download?{qs}"
