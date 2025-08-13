@@ -3,6 +3,8 @@
 from typing import Optional, Dict, Any, List
 from fastapi import APIRouter, File, UploadFile, Query, HTTPException
 from fastapi.responses import FileResponse
+from celery.result import AsyncResult
+
 from backend.app.core.pdf_parser import PDFParser
 from backend.app.core.async_queue import queue
 from backend.app.core.artifacts import PDFRenderer
@@ -13,6 +15,8 @@ from backend.app.models.job_models import(
     JobStatusResponse,
     JobResultResponse,
 )
+from backend.worker.worker import celery_app
+
 import tempfile
 import os
 import json
@@ -62,6 +66,28 @@ async def job_wait(job_id: str, timeout: Optional[float] = Query(default=30.0, g
     """
     result = queue.wait_for_result(job_id, timeout=timeout)
     return JobResultResponse(**result)
+
+# ------------ Warmup endpoints ------------
+@api_router.post("/warmup", tags=["Health"])
+def warmup():
+    """
+    Enqueue a warmup task for the active model.
+    Returns a task id so we can /job-wait on it if desired.
+    """
+    async_res = celery_app.send_task("warmup_llm", queue="llm", routing_key="llm")
+    return {"job_id": async_res.id}
+
+@api_router.get("/warmup-wait/{job_id}", tags=["Health"])
+def warmup_wait(job_id: str, timeout: Optional[float] = Query(default=120.0, ge=0.0)):
+    """
+    Wait for a specific warmup job to complete.
+    """
+    ar = AsyncResult(job_id, app=celery_app)
+    try:
+        val = ar.get(timeout=timeout, propagate=False)
+    except Exception as e:
+        return {"job_id": job_id, "status": ar.status, "error": str(e)}
+    return {"job_id": job_id, "status": ar.status, "result": val}
 
 # ---------------- Downloadable Artifacts ----------------
 
